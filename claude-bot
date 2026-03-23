@@ -41,6 +41,186 @@ EOF
 
 die() { printf 'claude-bot: %s\n' "$1" >&2; exit 1; }
 
+# ── Interactive setup ────────────────────────────────────────────────────────
+
+# Validate a bot token against Telegram's getMe API. Sets VALIDATED_BOT_NAME.
+VALIDATED_BOT_NAME=""
+validate_token() {
+  local token="$1"
+  local resp
+  resp=$(curl -s "https://api.telegram.org/bot${token}/getMe" 2>/dev/null) || return 1
+  # Check for "ok":true
+  if [[ "$resp" != *'"ok":true'* ]]; then
+    return 1
+  fi
+  # Extract bot username
+  VALIDATED_BOT_NAME=$(printf '%s' "$resp" | sed -n 's/.*"username"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+  return 0
+}
+
+# Read allowFrom from a given access.json path into INHERITED_USERS array.
+INHERITED_USERS=()
+read_allow_from() {
+  local file="$1"
+  INHERITED_USERS=()
+  [[ -f "$file" ]] || return 0
+  local in_allow=false
+  while IFS= read -r line; do
+    if [[ "$line" =~ \"allowFrom\" ]]; then
+      in_allow=true
+      continue
+    fi
+    if $in_allow; then
+      [[ "$line" =~ \] ]] && break
+      if [[ "$line" =~ \"([^\"]+)\" ]]; then
+        INHERITED_USERS+=("${BASH_REMATCH[1]}")
+      fi
+    fi
+  done < "$file"
+}
+
+# Run interactive setup when no Telegram config exists for this project.
+# Writes .env, access.json, and updates settings.local.json.
+interactive_setup() {
+  local proj_dir="$1"
+  local dir_basename
+  dir_basename=$(basename "$proj_dir")
+
+  printf '\n'
+  printf 'claude-bot: no Telegram configuration found for this project.\n'
+  printf '  Directory: %s\n\n' "$proj_dir"
+  printf 'Let me help you set it up.\n\n'
+
+  # 1. Project ID
+  local default_id
+  # Sanitize directory basename to valid project ID chars
+  default_id=$(printf '%s' "$dir_basename" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-zA-Z0-9_-]/-/g' | head -c 64)
+
+  local proj_id=""
+  while [[ -z "$proj_id" ]]; do
+    printf 'Project ID [%s]: ' "$default_id"
+    read -r proj_id
+    proj_id="${proj_id:-$default_id}"
+    # Validate
+    if [[ ${#proj_id} -gt 64 ]]; then
+      printf '  Too long (max 64 chars). Try again.\n'
+      proj_id=""
+    elif [[ ! "$proj_id" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+      printf '  Invalid characters. Only letters, digits, hyphens, underscores.\n'
+      proj_id=""
+    fi
+  done
+
+  # 2. Bot token
+  printf '\n'
+  printf 'Paste your bot token from @BotFather (looks like 123456789:AAH...):\n'
+  local bot_token=""
+  while [[ -z "$bot_token" ]]; do
+    printf 'Token: '
+    read -r bot_token
+    if [[ -z "$bot_token" ]]; then
+      printf '  Token cannot be empty.\n'
+      continue
+    fi
+    printf '  Validating with Telegram...'
+    if validate_token "$bot_token"; then
+      printf ' OK (@%s)\n' "$VALIDATED_BOT_NAME"
+    else
+      printf ' FAILED — Telegram rejected this token. Check it and try again.\n'
+      bot_token=""
+    fi
+  done
+
+  # 3. Create state directory and write .env
+  local state_dir="$GLOBAL_STATE_DIR/projects/$proj_id"
+  mkdir -p "$state_dir"
+  chmod 700 "$state_dir"
+  printf 'TELEGRAM_BOT_TOKEN=%s\n' "$bot_token" > "$state_dir/.env"
+  chmod 600 "$state_dir/.env"
+  printf '\n  Wrote token to %s/.env\n' "$state_dir"
+
+  # 4. Bootstrap access.json — inherit allowFrom from global if available
+  local access_file="$state_dir/access.json"
+  if [[ ! -f "$access_file" ]]; then
+    read_allow_from "$GLOBAL_STATE_DIR/access.json"
+    local allow_json="[]"
+    if [[ ${#INHERITED_USERS[@]} -gt 0 ]]; then
+      # Build JSON array
+      allow_json="["
+      local first=true
+      for u in "${INHERITED_USERS[@]}"; do
+        $first || allow_json="$allow_json,"
+        allow_json="$allow_json
+    \"$u\""
+        first=false
+      done
+      allow_json="$allow_json
+  ]"
+    fi
+    cat > "$access_file" <<EOJSON
+{
+  "dmPolicy": "pairing",
+  "allowFrom": ${allow_json},
+  "groups": {},
+  "pending": {}
+}
+EOJSON
+    chmod 600 "$access_file"
+    if [[ ${#INHERITED_USERS[@]} -gt 0 ]]; then
+      printf '  Wrote access.json (inherited %d user(s) from global config)\n' "${#INHERITED_USERS[@]}"
+    else
+      printf '  Wrote access.json (pairing mode — DM the bot to pair)\n'
+    fi
+  fi
+
+  # 5. Update settings.local.json
+  local settings_file="$proj_dir/.claude/settings.local.json"
+  mkdir -p "$proj_dir/.claude"
+  if [[ -f "$settings_file" ]]; then
+    # File exists — inject/update env keys. Handles both "env" present and absent.
+    local tmp_settings
+    tmp_settings=$(mktemp)
+    if grep -q '"env"' "$settings_file"; then
+      # env block exists — add/replace our keys after the "env": { line
+      sed '/"env"[[:space:]]*:[[:space:]]*{/,/}/{
+        /"TELEGRAM_PROJECT_ID"/d
+        /"TELEGRAM_STATE_DIR"/d
+        /"env"[[:space:]]*:[[:space:]]*{/a\
+    "TELEGRAM_PROJECT_ID": "'"$proj_id"'",\
+    "TELEGRAM_STATE_DIR": "'"$state_dir"'",
+      }' "$settings_file" > "$tmp_settings"
+    else
+      # No env block — add one after the opening brace
+      sed '1,/{/{
+        /{/a\
+  "env": {\
+    "TELEGRAM_PROJECT_ID": "'"$proj_id"'",\
+    "TELEGRAM_STATE_DIR": "'"$state_dir"'"\
+  },
+      }' "$settings_file" > "$tmp_settings"
+    fi
+    mv "$tmp_settings" "$settings_file"
+  else
+    # No settings file — create one
+    cat > "$settings_file" <<EOJSON
+{
+  "env": {
+    "TELEGRAM_PROJECT_ID": "$proj_id",
+    "TELEGRAM_STATE_DIR": "$state_dir"
+  }
+}
+EOJSON
+  fi
+  printf '  Updated %s\n' "$settings_file"
+
+  printf '\n  Setup complete! Bot: @%s | Project: %s\n\n' "$VALIDATED_BOT_NAME" "$proj_id"
+
+  # Update script state so the rest of the script uses the new values
+  PROJECT_ID="$proj_id"
+  EXPLICIT_STATE_DIR="$state_dir"
+  STATE_DIR="$state_dir"
+}
+
 # ── Parse arguments ──────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
@@ -66,14 +246,19 @@ GLOBAL_STATE_DIR="$HOME/.claude/channels/telegram"
 PROJECT_ID=""
 STATE_DIR="$GLOBAL_STATE_DIR"
 
-# Extract TELEGRAM_PROJECT_ID from .claude/settings.local.json (jq-free)
+# Extract TELEGRAM_STATE_DIR and TELEGRAM_PROJECT_ID from .claude/settings.local.json (jq-free)
 SETTINGS_FILE="$PROJECT_DIR/.claude/settings.local.json"
+EXPLICIT_STATE_DIR=""
 if [[ -f "$SETTINGS_FILE" ]]; then
-  # Minimal JSON extraction: find "TELEGRAM_PROJECT_ID" : "value"
+  EXPLICIT_STATE_DIR=$(sed -n 's/.*"TELEGRAM_STATE_DIR"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SETTINGS_FILE" | head -1)
   PROJECT_ID=$(sed -n 's/.*"TELEGRAM_PROJECT_ID"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SETTINGS_FILE" | head -1)
 fi
 
-if [[ -n "$PROJECT_ID" ]]; then
+# TELEGRAM_STATE_DIR takes precedence (full path), then TELEGRAM_PROJECT_ID
+# builds the path, then fall back to global.
+if [[ -n "$EXPLICIT_STATE_DIR" ]]; then
+  STATE_DIR="$EXPLICIT_STATE_DIR"
+elif [[ -n "$PROJECT_ID" ]]; then
   STATE_DIR="$GLOBAL_STATE_DIR/projects/$PROJECT_ID"
 fi
 
@@ -82,9 +267,68 @@ fi
 command -v claude >/dev/null 2>&1 || die "claude not found on PATH"
 command -v curl   >/dev/null 2>&1 || die "curl not found on PATH"
 
+# If no project-specific config exists, offer interactive setup
+if [[ -z "$EXPLICIT_STATE_DIR" ]] && [[ -z "$PROJECT_ID" ]]; then
+  # No per-project config — check if this looks intentional (global .env exists)
+  # or if the user just hasn't configured yet
+  if [[ ! -f "$GLOBAL_STATE_DIR/.env" ]]; then
+    # No global config either — definitely needs setup
+    interactive_setup "$PROJECT_DIR"
+  else
+    # Global exists but no per-project — ask
+    printf '\n'
+    printf 'claude-bot: no per-project Telegram config found for %s\n' "$(basename "$PROJECT_DIR")"
+    printf '  A global bot token exists — would you like to:\n'
+    printf '  1) Set up a per-project bot (recommended)\n'
+    printf '  2) Use the global bot\n\n'
+    printf 'Choice [1]: '
+    read -r choice
+    choice="${choice:-1}"
+    if [[ "$choice" == "1" ]]; then
+      interactive_setup "$PROJECT_DIR"
+    else
+      printf '  Using global bot.\n\n'
+    fi
+  fi
+elif [[ -n "$PROJECT_ID" ]] && [[ ! -f "$STATE_DIR/.env" ]]; then
+  # Project ID is set but no .env — token missing for this project
+  printf '\n'
+  printf 'claude-bot: project "%s" is configured but has no bot token.\n' "$PROJECT_ID"
+  printf '  Expected token at: %s/.env\n\n' "$STATE_DIR"
+  printf 'Would you like to set it up now? [Y/n]: '
+  read -r yn
+  yn="${yn:-y}"
+  if [[ "$yn" =~ ^[Yy] ]]; then
+    printf '\nPaste your bot token from @BotFather:\n'
+    local_token=""
+    while [[ -z "$local_token" ]]; do
+      printf 'Token: '
+      read -r local_token
+      if [[ -z "$local_token" ]]; then
+        printf '  Token cannot be empty.\n'
+        continue
+      fi
+      printf '  Validating with Telegram...'
+      if validate_token "$local_token"; then
+        printf ' OK (@%s)\n' "$VALIDATED_BOT_NAME"
+      else
+        printf ' FAILED — check token and try again.\n'
+        local_token=""
+      fi
+    done
+    mkdir -p "$STATE_DIR"
+    chmod 700 "$STATE_DIR"
+    printf 'TELEGRAM_BOT_TOKEN=%s\n' "$local_token" > "$STATE_DIR/.env"
+    chmod 600 "$STATE_DIR/.env"
+    printf '  Wrote token to %s/.env\n\n' "$STATE_DIR"
+  else
+    die "bot token not found: $STATE_DIR/.env"
+  fi
+fi
+
 ENV_FILE="$STATE_DIR/.env"
 [[ -f "$ENV_FILE" ]] || die "bot token not found: $ENV_FILE
-  Run /telegram:configure to set up the bot token first."
+  Run: claude-bot $PROJECT_DIR  (interactive setup will guide you)"
 
 # Read bot token from .env file
 BOT_TOKEN=""
@@ -120,13 +364,16 @@ if [[ -f "$ACCESS_FILE" ]]; then
   done < "$ACCESS_FILE"
 fi
 
-[[ ${#NOTIFY_USERS[@]} -gt 0 ]] || die "no users in allowFrom to notify — pair with the bot first.
-  Access file: $ACCESS_FILE"
+if [[ ${#NOTIFY_USERS[@]} -eq 0 ]]; then
+  printf 'claude-bot: no users in allowFrom yet — DM the bot on Telegram to pair.\n' >&2
+  printf '  Notifications will be skipped until a user is paired.\n\n' >&2
+fi
 
 # ── Telegram notification helper ─────────────────────────────────────────────
 
 send_telegram() {
   local text="$1"
+  [[ ${#NOTIFY_USERS[@]} -gt 0 ]] || return 0
   for user_id in "${NOTIFY_USERS[@]}"; do
     curl -s -o /dev/null "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
       -d chat_id="$user_id" \
@@ -170,7 +417,7 @@ attempt=0
 while true; do
   attempt=$((attempt + 1))
 
-  CLAUDE_CMD=(claude --channels plugin:trezero/telegram-per-project)
+  CLAUDE_CMD=(claude --channels plugin:telegram@claude-plugins-official)
   [[ -n "$DSP" ]] && CLAUDE_CMD+=("$DSP")
 
   if [[ $attempt -eq 1 ]]; then

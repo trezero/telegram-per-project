@@ -44,9 +44,10 @@ const PROJECT_ID = process.env.TELEGRAM_PROJECT_ID
 
 if (PROJECT_ID) validateProjectId(PROJECT_ID)
 
-const STATE_DIR = PROJECT_ID
-  ? join(GLOBAL_STATE_DIR, 'projects', PROJECT_ID)
-  : GLOBAL_STATE_DIR
+// TELEGRAM_STATE_DIR takes precedence (full path override), then
+// TELEGRAM_PROJECT_ID builds the path, then fall back to global.
+const STATE_DIR = process.env.TELEGRAM_STATE_DIR
+  ?? (PROJECT_ID ? join(GLOBAL_STATE_DIR, 'projects', PROJECT_ID) : GLOBAL_STATE_DIR)
 
 const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
@@ -386,7 +387,7 @@ function trackDelivery(chatId: string): void {
     void bot.api.sendMessage(chatId,
       `It looks like there's no active Claude Code session${projectNote} right now. ` +
       `Make sure a session is running with:\n\n` +
-      `claude --channels plugin:trezero/telegram-per-project`,
+      `claude --channels plugin:telegram@claude-plugins-official`,
     ).catch(() => {})
   }, timeoutS * 1000)
 

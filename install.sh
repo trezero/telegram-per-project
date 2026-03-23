@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install.sh — Install claude-bot and the Telegram plugin for Claude Code.
-# Symlinks claude-bot to a directory on PATH and installs the plugin.
+# install.sh — Install claude-gram and the Telegram plugin for Claude Code.
+# Symlinks claude-gram to a directory on PATH and installs the plugin.
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-CLAUDE_BOT="$SCRIPT_DIR/claude-bot"
+CLAUDE_BOT="$SCRIPT_DIR/claude-gram"
 
 die() { printf 'install: %s\n' "$1" >&2; exit 1; }
 
-[[ -f "$CLAUDE_BOT" ]] || die "claude-bot not found at $CLAUDE_BOT"
+[[ -f "$CLAUDE_BOT" ]] || die "claude-gram not found at $CLAUDE_BOT"
 
 # ── Pick install directory ───────────────────────────────────────────────────
 
@@ -29,9 +29,9 @@ if [[ -n "${1:-}" ]]; then
   mkdir -p "$INSTALL_DIR"
 fi
 
-LINK="$INSTALL_DIR/claude-bot"
+LINK="$INSTALL_DIR/claude-gram"
 
-# ── Install claude-bot ───────────────────────────────────────────────────────
+# ── Install claude-gram ───────────────────────────────────────────────────────
 
 if [[ -e "$LINK" ]] || [[ -L "$LINK" ]]; then
   printf 'Updating existing install at %s\n' "$LINK"
@@ -61,5 +61,5 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
   printf '  export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
   printf 'Then restart your shell or run:  source ~/.bashrc\n'
 else
-  printf '\nDone! Run "claude-bot" from any project directory to get started.\n'
+  printf '\nDone! Run "claude-gram" from any project directory to get started.\n'
 fi

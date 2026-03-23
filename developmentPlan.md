@@ -1,4 +1,4 @@
-# `claude-bot` — Session Launcher & Watchdog
+# `claude-gram` — Session Launcher & Watchdog
 
 **Date:** 2026-03-23
 **Status:** Design approved
@@ -13,7 +13,7 @@ notification that their bot is offline, and must manually restart.
 
 ## Solution
 
-A self-contained bash script (`claude-bot`) that:
+A self-contained bash script (`claude-gram`) that:
 1. Launches Claude Code with `--channels plugin:telegram@claude-plugins-official`
 2. Monitors the process for exit
 3. Sends a Telegram notification when the session ends
@@ -24,7 +24,7 @@ No new dependencies — uses `curl` for Telegram API calls and `jq`-free JSON pa
 ## Interface
 
 ```
-Usage: claude-bot [options] [project-dir]
+Usage: claude-gram [options] [project-dir]
 
 Options:
   -dsp          Add --dangerously-skip-permissions to the claude command
@@ -40,16 +40,16 @@ Arguments:
 
 ```bash
 # Basic usage — run in current project directory
-claude-bot
+claude-gram
 
 # With skip-permissions flag
-claude-bot -dsp
+claude-gram -dsp
 
 # Explicit project directory, no retries
-claude-bot --retries 0 ~/projects/archon
+claude-gram --retries 0 ~/projects/archon
 
 # In tmux for persistence
-tmux new -s archon "claude-bot -dsp ~/projects/archon"
+tmux new -s archon "claude-gram -dsp ~/projects/archon"
 ```
 
 ## Behavior
@@ -95,7 +95,7 @@ curl -s "https://api.telegram.org/bot${TOKEN}/sendMessage" \
   -d chat_id="$user_id" \
   -d text="Claude Code session has ended (exit code: $code). To restart, run:
 
-claude-bot [-dsp] $project_dir"
+claude-gram [-dsp] $project_dir"
 ```
 
 ### 5. Retry logic
@@ -106,7 +106,7 @@ claude-bot [-dsp] $project_dir"
 - If retries exhausted: send a final message:
 
   > "Session failed to restart after N attempts. Please re-authenticate
-  > (`/login`) and run `claude-bot` again."
+  > (`/login`) and run `claude-gram` again."
 
 ### 6. Clean exit
 
@@ -127,7 +127,7 @@ cleanly without sending a "session died" notification (user intentionally stoppe
 ## File Location
 
 ```
-./claude-bot
+./claude-gram
 ```
 
 Single file, `chmod +x`, no installation step. Users run it directly or symlink
@@ -144,7 +144,7 @@ to a directory on PATH.
 
 Manual testing:
 
-1. **Normal exit**: Start `claude-bot`, type `/exit` in Claude Code, verify Telegram notification
+1. **Normal exit**: Start `claude-gram`, type `/exit` in Claude Code, verify Telegram notification
 2. **Auth expiry simulation**: Start session, wait for token expiry, verify notification + retry
 3. **Crash recovery**: Kill the claude process (`kill -9`), verify retry + notification
 4. **Clean shutdown**: `Ctrl+C` the wrapper, verify NO notification sent

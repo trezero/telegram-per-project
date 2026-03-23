@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# claude-bot — Session launcher & watchdog for Claude Code with Telegram notifications.
+# claude-gram — Session launcher & watchdog for Claude Code with Telegram notifications.
 # Launches Claude Code with the Telegram channel plugin, monitors for exit,
 # notifies all allowFrom users via Telegram when the session dies, and retries
 # with backoff.
@@ -17,7 +17,7 @@ STABILITY_THRESHOLD=300  # 5 minutes in seconds
 
 usage() {
   cat <<'EOF'
-Usage: claude-bot [options] [project-dir]
+Usage: claude-gram [options] [project-dir]
 
 Launches Claude Code with the Telegram channel plugin, monitors the process,
 sends Telegram notifications on session death, and retries with backoff.
@@ -32,14 +32,14 @@ Arguments:
   project-dir   Directory to run in (default: current directory)
 
 Examples:
-  claude-bot
-  claude-bot -dsp
-  claude-bot --retries 0 ~/projects/archon
-  tmux new -s archon "claude-bot -dsp ~/projects/archon"
+  claude-gram
+  claude-gram -dsp
+  claude-gram --retries 0 ~/projects/archon
+  tmux new -s archon "claude-gram -dsp ~/projects/archon"
 EOF
 }
 
-die() { printf 'claude-bot: %s\n' "$1" >&2; exit 1; }
+die() { printf 'claude-gram: %s\n' "$1" >&2; exit 1; }
 
 # ── Interactive setup ────────────────────────────────────────────────────────
 
@@ -87,7 +87,7 @@ interactive_setup() {
   dir_basename=$(basename "$proj_dir")
 
   printf '\n'
-  printf 'claude-bot: no Telegram configuration found for this project.\n'
+  printf 'claude-gram: no Telegram configuration found for this project.\n'
   printf '  Directory: %s\n\n' "$proj_dir"
   printf 'Let me help you set it up.\n\n'
 
@@ -277,7 +277,7 @@ if [[ -z "$EXPLICIT_STATE_DIR" ]] && [[ -z "$PROJECT_ID" ]]; then
   else
     # Global exists but no per-project — ask
     printf '\n'
-    printf 'claude-bot: no per-project Telegram config found for %s\n' "$(basename "$PROJECT_DIR")"
+    printf 'claude-gram: no per-project Telegram config found for %s\n' "$(basename "$PROJECT_DIR")"
     printf '  A global bot token exists — would you like to:\n'
     printf '  1) Set up a per-project bot (recommended)\n'
     printf '  2) Use the global bot\n\n'
@@ -293,7 +293,7 @@ if [[ -z "$EXPLICIT_STATE_DIR" ]] && [[ -z "$PROJECT_ID" ]]; then
 elif [[ -n "$PROJECT_ID" ]] && [[ ! -f "$STATE_DIR/.env" ]]; then
   # Project ID is set but no .env — token missing for this project
   printf '\n'
-  printf 'claude-bot: project "%s" is configured but has no bot token.\n' "$PROJECT_ID"
+  printf 'claude-gram: project "%s" is configured but has no bot token.\n' "$PROJECT_ID"
   printf '  Expected token at: %s/.env\n\n' "$STATE_DIR"
   printf 'Would you like to set it up now? [Y/n]: '
   read -r yn
@@ -328,7 +328,7 @@ fi
 
 ENV_FILE="$STATE_DIR/.env"
 [[ -f "$ENV_FILE" ]] || die "bot token not found: $ENV_FILE
-  Run: claude-bot $PROJECT_DIR  (interactive setup will guide you)"
+  Run: claude-gram $PROJECT_DIR  (interactive setup will guide you)"
 
 # Read bot token from .env file
 BOT_TOKEN=""
@@ -365,7 +365,7 @@ if [[ -f "$ACCESS_FILE" ]]; then
 fi
 
 if [[ ${#NOTIFY_USERS[@]} -eq 0 ]]; then
-  printf 'claude-bot: no users in allowFrom yet — DM the bot on Telegram to pair.\n' >&2
+  printf 'claude-gram: no users in allowFrom yet — DM the bot on Telegram to pair.\n' >&2
   printf '  Notifications will be skipped until a user is paired.\n\n' >&2
 fi
 
@@ -401,7 +401,7 @@ trap 'forward_signal TERM' TERM
 # ── Build the command ────────────────────────────────────────────────────────
 
 build_display_cmd() {
-  local cmd="claude-bot"
+  local cmd="claude-gram"
   [[ -n "$DSP" ]] && cmd="$cmd -dsp"
   cmd="$cmd $PROJECT_DIR"
   printf '%s' "$cmd"
@@ -422,12 +422,12 @@ while true; do
 
   if [[ $attempt -eq 1 ]]; then
     if [[ -n "$PROJECT_ID" ]]; then
-      printf 'claude-bot: starting session (project: %s)\n' "$PROJECT_ID" >&2
+      printf 'claude-gram: starting session (project: %s)\n' "$PROJECT_ID" >&2
     else
-      printf 'claude-bot: starting session (global)\n' >&2
+      printf 'claude-gram: starting session (global)\n' >&2
     fi
   else
-    printf 'claude-bot: restarting session (attempt %d, %d retries left)\n' "$attempt" "$retries_left" >&2
+    printf 'claude-gram: restarting session (attempt %d, %d retries left)\n' "$attempt" "$retries_left" >&2
   fi
 
   start_time=$(date +%s)
@@ -463,7 +463,7 @@ while true; do
 
 $DISPLAY_CMD"
     fi
-    printf 'claude-bot: session ended (exit code: %d), no retries left\n' "$exit_code" >&2
+    printf 'claude-gram: session ended (exit code: %d), no retries left\n' "$exit_code" >&2
     exit "$exit_code"
   fi
 
@@ -472,6 +472,6 @@ $DISPLAY_CMD"
 
   send_telegram "Claude Code session has ended (exit code: $exit_code). Restarting in ${COOLDOWN}s ($((retries_left)) retries left)..."
 
-  printf 'claude-bot: session exited (code %d), restarting in %ds\n' "$exit_code" "$COOLDOWN" >&2
+  printf 'claude-gram: session exited (code %d), restarting in %ds\n' "$exit_code" "$COOLDOWN" >&2
   sleep "$COOLDOWN"
 done

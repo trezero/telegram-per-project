@@ -1,11 +1,11 @@
 # Telegram Per-Project
 
-Connect a Telegram bot to your Claude Code with an MCP server. Per-project mode gives each project its own bot, access policy, and message inbox. Includes a `claude-bot` watchdog that monitors the session, sends Telegram notifications on exit, and auto-retries.
+Connect a Telegram bot to your Claude Code with an MCP server. Per-project mode gives each project its own bot, access policy, and message inbox. Includes a `claude-gram` watchdog that monitors the session, sends Telegram notifications on exit, and auto-retries.
 
 ## Prerequisites
 
 - [Bun](https://bun.sh) — the MCP server runs on Bun. Install with `curl -fsSL https://bun.sh/install | bash`.
-- `curl` — used by `claude-bot` for Telegram API calls (pre-installed on most systems).
+- `curl` — used by `claude-gram` for Telegram API calls (pre-installed on most systems).
 
 ## Installation
 
@@ -18,7 +18,7 @@ cd telegram-per-project
 ```
 
 This does two things:
-1. Symlinks `claude-bot` to `~/.local/bin` (or `~/bin`) so it's available globally
+1. Symlinks `claude-gram` to `~/.local/bin` (or `~/bin`) so it's available globally
 2. Installs the `telegram@claude-plugins-official` plugin for Claude Code
 
 You can specify a custom install directory: `./install.sh /usr/local/bin`
@@ -49,11 +49,11 @@ Install the plugin:
 
 **3. Configure and launch.**
 
-The easiest way is to run `claude-bot` in your project directory — it detects missing config and walks you through setup interactively:
+The easiest way is to run `claude-gram` in your project directory — it detects missing config and walks you through setup interactively:
 
 ```bash
 cd ~/projects/myproject
-claude-bot
+claude-gram
 ```
 
 It will prompt for a project ID and bot token, validate the token with Telegram, write all config files, and launch the session.
@@ -67,7 +67,7 @@ Alternatively, configure manually with the skill:
 Then launch with:
 
 ```sh
-claude-bot
+claude-gram
 # or without the watchdog:
 claude --channels plugin:telegram@claude-plugins-official
 ```
@@ -88,12 +88,12 @@ Your next DM reaches the assistant.
 
 Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies. Ask Claude to do it, or `/telegram:access policy allowlist` directly.
 
-## `claude-bot` — Session Launcher & Watchdog
+## `claude-gram` — Session Launcher & Watchdog
 
-`claude-bot` wraps Claude Code with process monitoring, Telegram notifications, and automatic retries. It's the recommended way to run long-lived sessions.
+`claude-gram` wraps Claude Code with process monitoring, Telegram notifications, and automatic retries. It's the recommended way to run long-lived sessions.
 
 ```
-Usage: claude-bot [options] [project-dir]
+Usage: claude-gram [options] [project-dir]
 
 Options:
   -dsp          Add --dangerously-skip-permissions to the claude command
@@ -119,16 +119,16 @@ Arguments:
 
 ```bash
 # Basic usage — run in current project directory
-claude-bot
+claude-gram
 
 # With skip-permissions flag
-claude-bot -dsp
+claude-gram -dsp
 
 # Explicit project directory, no retries
-claude-bot --retries 0 ~/projects/myproject
+claude-gram --retries 0 ~/projects/myproject
 
 # In tmux for persistence
-tmux new -s myproject "claude-bot -dsp ~/projects/myproject"
+tmux new -s myproject "claude-gram -dsp ~/projects/myproject"
 ```
 
 ## Access control
@@ -168,7 +168,7 @@ Each project-scoped state directory contains the same files as the global one:
 
 ### Setting the environment variables
 
-Both variables are passed via the `env` block in `.claude/settings.local.json` in your project root. The `claude-bot` interactive setup and `/telegram:configure --project` command write this automatically, but the resulting structure is:
+Both variables are passed via the `env` block in `.claude/settings.local.json` in your project root. The `claude-gram` interactive setup and `/telegram:configure --project` command write this automatically, but the resulting structure is:
 
 ```json
 {
@@ -194,7 +194,7 @@ Claude Code's `env` is a flat `Record<string, string>` — all values must be st
 
 ### Setup walkthrough
 
-The fastest path is to run `claude-bot` in each project directory — it handles everything interactively. For manual setup:
+The fastest path is to run `claude-gram` in each project directory — it handles everything interactively. For manual setup:
 
 **1. Create a bot per project** with [@BotFather](https://t.me/BotFather). Give each a descriptive username (e.g. `@myproject_dev_bot`).
 
@@ -210,11 +210,11 @@ This does four things:
 3. Writes `TELEGRAM_PROJECT_ID=myproject` to the project's `.claude/settings.local.json`
 4. Copies `allowFrom` from the global `access.json` as the initial per-project access list (if the global config exists)
 
-**3. Launch** with `claude-bot` or manually:
+**3. Launch** with `claude-gram` or manually:
 
 ```sh
 # Recommended — with watchdog and notifications:
-cd ~/projects/myproject && claude-bot
+cd ~/projects/myproject && claude-gram
 
 # Or manually:
 cd ~/projects/myproject && claude --channels plugin:telegram@claude-plugins-official
@@ -226,20 +226,20 @@ cd ~/projects/myproject && claude --channels plugin:telegram@claude-plugins-offi
 
 ```sh
 # Terminal 1: Alpha project connects to @alpha_dev_bot
-cd ~/projects/alpha && claude-bot
+cd ~/projects/alpha && claude-gram
 
 # Terminal 2: Beta project connects to @beta_dev_bot
-cd ~/projects/beta && claude-bot
+cd ~/projects/beta && claude-gram
 
 # Terminal 3: No project ID — connects to the global bot
-cd ~/projects/other && claude-bot
+cd ~/projects/other && claude-gram
 ```
 
 DM `@alpha_dev_bot` to reach Terminal 1, `@beta_dev_bot` to reach Terminal 2. Messages never cross between sessions.
 
 ### Access inheritance
 
-When a per-project `access.json` is created for the first time (either by `claude-bot` setup, the configure skill, or the server's startup bootstrap), it inherits the `allowFrom` list from the global `~/.claude/channels/telegram/access.json`. After creation, the per-project config is fully independent — changes to the global config do not propagate, and vice versa.
+When a per-project `access.json` is created for the first time (either by `claude-gram` setup, the configure skill, or the server's startup bootstrap), it inherits the `allowFrom` list from the global `~/.claude/channels/telegram/access.json`. After creation, the per-project config is fully independent — changes to the global config do not propagate, and vice versa.
 
 ### Verifying your setup
 

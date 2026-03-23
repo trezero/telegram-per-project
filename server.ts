@@ -386,7 +386,7 @@ function trackDelivery(chatId: string): void {
     void bot.api.sendMessage(chatId,
       `It looks like there's no active Claude Code session${projectNote} right now. ` +
       `Make sure a session is running with:\n\n` +
-      `claude --channels plugin:telegram@claude-plugins-official`,
+      `claude --channels plugin:trezero/telegram-per-project`,
     ).catch(() => {})
   }, timeoutS * 1000)
 

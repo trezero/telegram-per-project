@@ -1,4 +1,4 @@
-# Telegram
+# Telegram Per-Project
 
 Connect a Telegram bot to your Claude Code with an MCP server.
 
@@ -26,7 +26,7 @@ These are Claude Code commands — run `claude` to start a session first.
 
 Install the plugin:
 ```
-/plugin install telegram@claude-plugins-official
+/plugin install trezero/telegram-per-project
 ```
 
 **3. Give the server the token.**
@@ -42,7 +42,7 @@ Writes `TELEGRAM_BOT_TOKEN=...` to `~/.claude/channels/telegram/.env`. You can a
 The server won't connect without this — exit your session and start a new one:
 
 ```sh
-claude --channels plugin:telegram@claude-plugins-official
+claude --channels plugin:trezero/telegram-per-project
 ```
 
 **5. Pair.**
@@ -139,13 +139,13 @@ This does four things:
 
 ```sh
 # Terminal 1: Alpha project connects to @alpha_dev_bot
-cd ~/projects/alpha && claude --channels plugin:telegram@claude-plugins-official
+cd ~/projects/alpha && claude --channels plugin:trezero/telegram-per-project
 
 # Terminal 2: Beta project connects to @beta_dev_bot
-cd ~/projects/beta && claude --channels plugin:telegram@claude-plugins-official
+cd ~/projects/beta && claude --channels plugin:trezero/telegram-per-project
 
 # Terminal 3: No project ID — connects to the global bot
-cd ~/projects/other && claude --channels plugin:telegram@claude-plugins-official
+cd ~/projects/other && claude --channels plugin:trezero/telegram-per-project
 ```
 
 DM `@alpha_dev_bot` to reach Terminal 1, `@beta_dev_bot` to reach Terminal 2. Messages never cross between sessions.

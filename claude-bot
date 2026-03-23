@@ -170,7 +170,7 @@ attempt=0
 while true; do
   attempt=$((attempt + 1))
 
-  CLAUDE_CMD=(claude --channels plugin:telegram@claude-plugins-official)
+  CLAUDE_CMD=(claude --channels plugin:trezero/telegram-per-project)
   [[ -n "$DSP" ]] && CLAUDE_CMD+=("$DSP")
 
   if [[ $attempt -eq 1 ]]; then

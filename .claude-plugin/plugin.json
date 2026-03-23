@@ -1,0 +1,18 @@
+{
+  "name": "telegram-per-project",
+  "description": "Telegram channel for Claude Code with per-project bot isolation — each project gets its own bot, access policy, and message inbox. Includes response timeout for unresponsive sessions.",
+  "version": "1.0.0",
+  "author": {
+    "name": "trezero"
+  },
+  "repository": "https://github.com/trezero/telegram-per-project",
+  "license": "MIT",
+  "keywords": [
+    "telegram",
+    "messaging",
+    "channel",
+    "mcp",
+    "per-project",
+    "multi-bot"
+  ]
+}

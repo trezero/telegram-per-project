@@ -89,41 +89,46 @@ fi
 
 # ── Install the Telegram plugin ──────────────────────────────────────────────
 #
-# Install from this repo directory so Claude Code uses the local version,
-# which includes per-project state directory resolution in the skills.
-# The old marketplace version (telegram@claude-plugins-official) hardcodes
-# the global state path and lacks per-project support — don't use it.
+# Claude Code's plugin install only accepts marketplace identifiers — local
+# paths are not supported. Install the official marketplace version to get
+# the plugin registered and the server binary in place, then immediately
+# patch the skills with the local versions that have per-project state dir
+# support (the marketplace version hardcodes the global path).
 
 if command -v claude >/dev/null 2>&1; then
-  printf '\nInstalling Telegram plugin from %s...\n' "$SCRIPT_DIR"
-  if claude plugin install "$SCRIPT_DIR" 2>/dev/null; then
-    printf 'Plugin installed.\n'
+  printf '\nInstalling Telegram plugin...\n'
+  if claude plugin install telegram@claude-plugins-official 2>/dev/null; then
+    printf 'Plugin installed: telegram@claude-plugins-official\n'
   else
-    printf 'Plugin install failed or may already be up to date.\n'
-    printf '(If claude is not logged in, run after login:  claude plugin install %s)\n' "$SCRIPT_DIR"
+    printf 'Plugin may already be installed.\n'
   fi
 else
   printf '\nclaude not found on PATH — skipping plugin install.\n'
-  printf 'Run this after logging in:  claude plugin install %s\n' "$SCRIPT_DIR"
-  printf 'Then re-run install.sh to finish the bun dependency setup.\n'
+  printf 'Run this after logging in:\n'
+  printf '  claude plugin install telegram@claude-plugins-official\n'
+  printf 'Then re-run install.sh to patch skills and install dependencies.\n'
 fi
 
 # ── Patch skills in the installed plugin cache ───────────────────────────────
 #
-# `claude plugin install /local/path` doesn't update an already-installed
-# plugin. To ensure the running skills have per-project state dir support,
-# copy the skill files directly over the cached version.
+# The marketplace version's skills hardcode ~/.claude/channels/telegram/ and
+# don't know about per-project state dirs. Copy the local versions over the
+# cached files so /telegram:access and /telegram:configure resolve the right
+# path. Safe to re-run — just overwrites files.
 
-TELEGRAM_CACHE=$(ls -d "$HOME/.claude/plugins/cache/"*/telegram*/*/ 2>/dev/null | head -1)
+TELEGRAM_CACHE=$(ls -d "$HOME/.claude/plugins/cache/claude-plugins-official/telegram/"*/ 2>/dev/null | head -1)
 if [[ -n "$TELEGRAM_CACHE" ]] && [[ -d "$TELEGRAM_CACHE/skills" ]]; then
+  printf 'Patching skills in %s...\n' "$TELEGRAM_CACHE"
   for skill in access configure; do
     src="$SCRIPT_DIR/skills/$skill/SKILL.md"
     dst="$TELEGRAM_CACHE/skills/$skill/SKILL.md"
     if [[ -f "$src" ]] && [[ -f "$dst" ]]; then
       cp "$src" "$dst"
-      printf 'Updated skill: %s\n' "$dst"
+      printf '  Updated: skills/%s/SKILL.md\n' "$skill"
     fi
   done
+elif [[ -z "$TELEGRAM_CACHE" ]]; then
+  printf 'Note: plugin cache not found — skills will be patched on next run.\n'
 fi
 
 # ── Run bun install for plugin dependencies ──────────────────────────────────

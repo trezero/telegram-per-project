@@ -109,26 +109,42 @@ else
   printf 'Then re-run install.sh to patch skills and install dependencies.\n'
 fi
 
-# ── Patch skills in the installed plugin cache ───────────────────────────────
+# ── Patch skills in both plugin directories ───────────────────────────────────
 #
 # The marketplace version's skills hardcode ~/.claude/channels/telegram/ and
-# don't know about per-project state dirs. Copy the local versions over the
-# cached files so /telegram:access and /telegram:configure resolve the right
-# path. Safe to re-run — just overwrites files.
+# don't know about per-project state dirs. Claude loads skills from two places:
+#   1. The plugin cache (versioned copy)
+#   2. The external_plugins directory (what Claude actually uses at runtime)
+# Both must be patched. Safe to re-run — just overwrites files.
 
+patch_skills() {
+  local target_dir="$1"
+  if [[ -d "$target_dir/skills" ]]; then
+    local patched=0
+    for skill in access configure; do
+      src="$SCRIPT_DIR/skills/$skill/SKILL.md"
+      dst="$target_dir/skills/$skill/SKILL.md"
+      if [[ -f "$src" ]] && [[ -f "$dst" ]]; then
+        cp "$src" "$dst"
+        patched=$((patched + 1))
+      fi
+    done
+    [[ $patched -gt 0 ]] && printf '  Patched %d skill(s) in %s\n' "$patched" "$target_dir"
+  fi
+}
+
+printf 'Patching Telegram skills...\n'
+
+# Plugin cache (versioned)
 TELEGRAM_CACHE=$(ls -d "$HOME/.claude/plugins/cache/claude-plugins-official/telegram/"*/ 2>/dev/null | head -1)
-if [[ -n "$TELEGRAM_CACHE" ]] && [[ -d "$TELEGRAM_CACHE/skills" ]]; then
-  printf 'Patching skills in %s...\n' "$TELEGRAM_CACHE"
-  for skill in access configure; do
-    src="$SCRIPT_DIR/skills/$skill/SKILL.md"
-    dst="$TELEGRAM_CACHE/skills/$skill/SKILL.md"
-    if [[ -f "$src" ]] && [[ -f "$dst" ]]; then
-      cp "$src" "$dst"
-      printf '  Updated: skills/%s/SKILL.md\n' "$skill"
-    fi
-  done
-elif [[ -z "$TELEGRAM_CACHE" ]]; then
-  printf 'Note: plugin cache not found — skills will be patched on next run.\n'
+[[ -n "$TELEGRAM_CACHE" ]] && patch_skills "$TELEGRAM_CACHE"
+
+# external_plugins (what Claude loads at runtime)
+EXTERNAL_PLUGINS="$HOME/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/telegram"
+[[ -d "$EXTERNAL_PLUGINS" ]] && patch_skills "$EXTERNAL_PLUGINS"
+
+if [[ -z "$TELEGRAM_CACHE" ]] && [[ ! -d "$EXTERNAL_PLUGINS" ]]; then
+  printf 'Note: no plugin directories found — skills will be patched on next run.\n'
 fi
 
 # ── Run bun install for plugin dependencies ──────────────────────────────────

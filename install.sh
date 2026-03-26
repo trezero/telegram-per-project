@@ -74,11 +74,16 @@ fi
 # Symlink bun into INSTALL_DIR so it's on the same PATH that Claude Code uses.
 # Claude spawns plugin servers using the shell PATH at the time it was launched.
 # Without this symlink, bun may not be visible to the plugin even if installed.
+# Skip if BUN_BIN is already inside INSTALL_DIR — that would create a self-loop.
 if [[ -n "$BUN_BIN" ]] && [[ -d "$INSTALL_DIR" ]]; then
   BUN_LINK="$INSTALL_DIR/bun"
-  if [[ ! -e "$BUN_LINK" ]] || [[ -L "$BUN_LINK" ]]; then
-    ln -sf "$BUN_BIN" "$BUN_LINK"
-    printf 'Symlinked: %s -> %s\n' "$BUN_LINK" "$BUN_BIN"
+  REAL_BUN_BIN="$(readlink -f "$BUN_BIN" 2>/dev/null || printf '%s' "$BUN_BIN")"
+  REAL_BUN_LINK="$(readlink -f "$BUN_LINK" 2>/dev/null || printf '%s' "$BUN_LINK")"
+  if [[ "$REAL_BUN_BIN" != "$REAL_BUN_LINK" ]]; then
+    ln -sf "$REAL_BUN_BIN" "$BUN_LINK"
+    printf 'Symlinked: %s -> %s\n' "$BUN_LINK" "$REAL_BUN_BIN"
+  else
+    printf 'bun already in place: %s\n' "$BUN_LINK"
   fi
 fi
 
@@ -103,6 +108,24 @@ else
   printf 'Then re-run install.sh to finish the bun dependency setup.\n'
 fi
 
+# ── Patch skills in the installed plugin cache ───────────────────────────────
+#
+# `claude plugin install /local/path` doesn't update an already-installed
+# plugin. To ensure the running skills have per-project state dir support,
+# copy the skill files directly over the cached version.
+
+TELEGRAM_CACHE=$(ls -d "$HOME/.claude/plugins/cache/"*/telegram*/*/ 2>/dev/null | head -1)
+if [[ -n "$TELEGRAM_CACHE" ]] && [[ -d "$TELEGRAM_CACHE/skills" ]]; then
+  for skill in access configure; do
+    src="$SCRIPT_DIR/skills/$skill/SKILL.md"
+    dst="$TELEGRAM_CACHE/skills/$skill/SKILL.md"
+    if [[ -f "$src" ]] && [[ -f "$dst" ]]; then
+      cp "$src" "$dst"
+      printf 'Updated skill: %s\n' "$dst"
+    fi
+  done
+fi
+
 # ── Run bun install for plugin dependencies ──────────────────────────────────
 #
 # server.ts depends on grammy and @modelcontextprotocol/sdk. Run bun install
@@ -110,8 +133,9 @@ fi
 
 if [[ -f "$SCRIPT_DIR/package.json" ]]; then
   if [[ -n "$BUN_BIN" ]]; then
+    REAL_BUN="$(readlink -f "$BUN_BIN" 2>/dev/null || printf '%s' "$BUN_BIN")"
     printf '\nInstalling plugin dependencies...\n'
-    "$BUN_BIN" install --no-summary --cwd "$SCRIPT_DIR" 2>/dev/null && \
+    "$REAL_BUN" install --no-summary --cwd "$SCRIPT_DIR" 2>/dev/null && \
       printf 'Dependencies ready.\n' || \
       printf 'Warning: bun install failed — plugin may not start correctly.\n'
   else

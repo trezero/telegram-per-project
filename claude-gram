@@ -190,14 +190,15 @@ EOJSON
     "TELEGRAM_STATE_DIR": "'"$state_dir"'",
       }' "$settings_file" > "$tmp_settings"
     else
-      # No env block — add one after the opening brace
-      sed '1,/{/{
-        /{/a\
+      # No env block — add one after the opening brace (line 1).
+      # Note: do NOT use a sed range like 1,/{/ here — GNU sed extends that
+      # range to the SECOND line matching {, which would be "hooks": { etc.,
+      # causing env to be injected inside hooks. Use the line-1 address only.
+      sed '1a\
   "env": {\
     "TELEGRAM_PROJECT_ID": "'"$proj_id"'",\
     "TELEGRAM_STATE_DIR": "'"$state_dir"'"\
-  },
-      }' "$settings_file" > "$tmp_settings"
+  },' "$settings_file" > "$tmp_settings"
     fi
     mv "$tmp_settings" "$settings_file"
   else
@@ -417,7 +418,7 @@ attempt=0
 while true; do
   attempt=$((attempt + 1))
 
-  CLAUDE_CMD=(claude --channels plugin:telegram@claude-plugins-official)
+  CLAUDE_CMD=(claude)
   [[ -n "$DSP" ]] && CLAUDE_CMD+=("$DSP")
 
   if [[ $attempt -eq 1 ]]; then

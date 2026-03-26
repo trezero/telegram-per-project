@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# install.sh — Install claude-gram and the Telegram plugin for Claude Code.
-# Symlinks claude-gram to a directory on PATH, installs bun if needed,
-# installs the plugin, and runs bun install for its dependencies.
+# install.sh — Install claude-gram and ensure bun is available.
+#
+# The plugin itself is loaded by Claude Code via --plugin-dir (development)
+# or marketplace install. This script only handles:
+#   1. Ensuring bun is installed (plugin runtime)
+#   2. Symlinking claude-gram onto PATH
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_BOT="$SCRIPT_DIR/claude-gram"
@@ -14,7 +17,6 @@ die() { printf 'install: %s\n' "$1" >&2; exit 1; }
 
 # ── Pick install directory ───────────────────────────────────────────────────
 
-# Prefer ~/.local/bin (XDG), fall back to ~/bin
 if [[ -d "$HOME/.local/bin" ]]; then
   INSTALL_DIR="$HOME/.local/bin"
 elif [[ -d "$HOME/bin" ]]; then
@@ -24,7 +26,6 @@ else
   mkdir -p "$INSTALL_DIR"
 fi
 
-# Allow override
 if [[ -n "${1:-}" ]]; then
   INSTALL_DIR="$1"
   mkdir -p "$INSTALL_DIR"
@@ -43,9 +44,6 @@ ln -s "$CLAUDE_BOT" "$LINK"
 printf 'Installed: %s -> %s\n' "$LINK" "$CLAUDE_BOT"
 
 # ── Ensure bun is installed ──────────────────────────────────────────────────
-#
-# The Telegram plugin (server.ts) requires bun to run. Without it, the plugin
-# silently fails to start — the bot never polls Telegram and pairing never works.
 
 BUN_BIN=""
 
@@ -71,10 +69,8 @@ else
   fi
 fi
 
-# Symlink bun into INSTALL_DIR so it's on the same PATH that Claude Code uses.
-# Claude spawns plugin servers using the shell PATH at the time it was launched.
-# Without this symlink, bun may not be visible to the plugin even if installed.
-# Skip if BUN_BIN is already inside INSTALL_DIR — that would create a self-loop.
+# Symlink bun into INSTALL_DIR so Claude Code can find it when spawning the
+# plugin server. Skip if bun is already reachable from INSTALL_DIR.
 if [[ -n "$BUN_BIN" ]] && [[ -d "$INSTALL_DIR" ]]; then
   BUN_LINK="$INSTALL_DIR/bun"
   REAL_BUN_BIN="$(readlink -f "$BUN_BIN" 2>/dev/null || printf '%s' "$BUN_BIN")"
@@ -87,84 +83,6 @@ if [[ -n "$BUN_BIN" ]] && [[ -d "$INSTALL_DIR" ]]; then
   fi
 fi
 
-# ── Install the Telegram plugin ──────────────────────────────────────────────
-#
-# Claude Code's plugin install only accepts marketplace identifiers — local
-# paths are not supported. Install the official marketplace version to get
-# the plugin registered and the server binary in place, then immediately
-# patch the skills with the local versions that have per-project state dir
-# support (the marketplace version hardcodes the global path).
-
-if command -v claude >/dev/null 2>&1; then
-  printf '\nInstalling Telegram plugin...\n'
-  if claude plugin install telegram@claude-plugins-official 2>/dev/null; then
-    printf 'Plugin installed: telegram@claude-plugins-official\n'
-  else
-    printf 'Plugin may already be installed.\n'
-  fi
-else
-  printf '\nclaude not found on PATH — skipping plugin install.\n'
-  printf 'Run this after logging in:\n'
-  printf '  claude plugin install telegram@claude-plugins-official\n'
-  printf 'Then re-run install.sh to patch skills and install dependencies.\n'
-fi
-
-# ── Patch skills in both plugin directories ───────────────────────────────────
-#
-# The marketplace version's skills hardcode ~/.claude/channels/telegram/ and
-# don't know about per-project state dirs. Claude loads skills from two places:
-#   1. The plugin cache (versioned copy)
-#   2. The external_plugins directory (what Claude actually uses at runtime)
-# Both must be patched. Safe to re-run — just overwrites files.
-
-patch_skills() {
-  local target_dir="$1"
-  if [[ -d "$target_dir/skills" ]]; then
-    local patched=0
-    for skill in access configure; do
-      src="$SCRIPT_DIR/skills/$skill/SKILL.md"
-      dst="$target_dir/skills/$skill/SKILL.md"
-      if [[ -f "$src" ]] && [[ -f "$dst" ]]; then
-        cp "$src" "$dst"
-        patched=$((patched + 1))
-      fi
-    done
-    [[ $patched -gt 0 ]] && printf '  Patched %d skill(s) in %s\n' "$patched" "$target_dir"
-  fi
-}
-
-printf 'Patching Telegram skills...\n'
-
-# Plugin cache (versioned)
-TELEGRAM_CACHE=$(ls -d "$HOME/.claude/plugins/cache/claude-plugins-official/telegram/"*/ 2>/dev/null | head -1)
-[[ -n "$TELEGRAM_CACHE" ]] && patch_skills "$TELEGRAM_CACHE"
-
-# external_plugins (what Claude loads at runtime)
-EXTERNAL_PLUGINS="$HOME/.claude/plugins/marketplaces/claude-plugins-official/external_plugins/telegram"
-[[ -d "$EXTERNAL_PLUGINS" ]] && patch_skills "$EXTERNAL_PLUGINS"
-
-if [[ -z "$TELEGRAM_CACHE" ]] && [[ ! -d "$EXTERNAL_PLUGINS" ]]; then
-  printf 'Note: no plugin directories found — skills will be patched on next run.\n'
-fi
-
-# ── Run bun install for plugin dependencies ──────────────────────────────────
-#
-# server.ts depends on grammy and @modelcontextprotocol/sdk. Run bun install
-# in the repo directory so the server can start. This is safe to re-run.
-
-if [[ -f "$SCRIPT_DIR/package.json" ]]; then
-  if [[ -n "$BUN_BIN" ]]; then
-    REAL_BUN="$(readlink -f "$BUN_BIN" 2>/dev/null || printf '%s' "$BUN_BIN")"
-    printf '\nInstalling plugin dependencies...\n'
-    "$REAL_BUN" install --no-summary --cwd "$SCRIPT_DIR" 2>/dev/null && \
-      printf 'Dependencies ready.\n' || \
-      printf 'Warning: bun install failed — plugin may not start correctly.\n'
-  else
-    printf '\nWarning: bun not available; skipping dependency install.\n'
-    printf 'Run manually:  bun install --cwd %s\n' "$SCRIPT_DIR"
-  fi
-fi
-
 # ── Check PATH ───────────────────────────────────────────────────────────────
 
 printf '\n'
@@ -172,24 +90,21 @@ if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
   printf 'Note: %s is not on your PATH.\n' "$INSTALL_DIR"
   printf 'Add this to your shell profile (~/.bashrc or ~/.zshrc):\n\n'
   printf '  export PATH="%s:$PATH"\n\n' "$INSTALL_DIR"
-  printf 'Then restart your shell or run:  source ~/.bashrc\n\n'
 fi
 
 # ── Next steps ───────────────────────────────────────────────────────────────
 
 printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'
 printf 'Installation complete! Next steps:\n\n'
-printf '  1. Run claude-gram from your project directory:\n'
+printf '  Load the plugin (choose one):\n\n'
+printf '    a) For development (this session only):\n'
+printf '         claude --plugin-dir %s\n\n' "$SCRIPT_DIR"
+printf '    b) Permanent install (when published to a marketplace):\n'
+printf '         claude plugin install telegram-per-project@<marketplace>\n\n'
+printf '  Then run claude-gram from your project directory:\n'
 printf '       cd /path/to/your/project\n'
 printf '       claude-gram\n\n'
-printf '     (First run will prompt for a project ID and bot token.)\n\n'
-printf '  2. Watch for this line confirming the bot is live:\n'
-printf '       telegram channel: polling as @YourBotName\n\n'
-printf '  3. DM your bot on Telegram. It will reply with a code:\n'
-printf '       Pairing required — run in Claude Code:\n'
-printf '       /telegram:access pair <code>\n\n'
-printf '  4. Run that command in the Claude session to approve yourself.\n'
-printf '     The bot will confirm: "Paired! Say hi to Claude."\n\n'
-printf '  5. Consider locking down access once paired:\n'
-printf '       /telegram:access policy allowlist\n'
+printf '  First run will prompt for a bot token (via plugin config).\n'
+printf '  DM your bot on Telegram to pair, then run:\n'
+printf '       /telegram-per-project:access pair <code>\n'
 printf '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n'

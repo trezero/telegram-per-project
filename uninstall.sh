@@ -34,11 +34,10 @@ done
 # ── Remove claude-gram symlink ────────────────────────────────────────────────
 
 for dir in "$HOME/.local/bin" "$HOME/bin"; do
-  link="$dir/claude-gram"
-  if [[ -L "$link" ]]; then
-    target="$(readlink "$link")"
-    rm -f "$link"
-    printf 'Removed: %s (was -> %s)\n' "$link" "$target"
+  target="$dir/claude-gram"
+  if [[ -e "$target" ]] || [[ -L "$target" ]]; then
+    rm -f "$target"
+    printf 'Removed: %s\n' "$target"
   fi
 done
 

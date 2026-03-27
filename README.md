@@ -18,10 +18,10 @@ cd telegram-per-project
 ```
 
 This does two things:
-1. Symlinks `claude-gram` to `~/.local/bin` (or `~/bin`) so it's available globally
+1. Copies `claude-gram` to `~/.local/bin` (or `~/bin`) so it's available globally
 2. Installs [Bun](https://bun.sh) if not already present (the plugin runtime)
 
-Since it's a symlink, `git pull` updates take effect immediately — no re-install needed.
+The installed copy is independent of the repo — re-run `./install.sh` to deploy updates.
 
 You can specify a custom install directory: `./install.sh /usr/local/bin`
 
@@ -72,7 +72,7 @@ If no Telegram config exists for the project, `claude-gram` guides you through i
 Or launch manually without the watchdog:
 
 ```bash
-claude --plugin-dir /path/to/telegram-per-project --channels plugin:telegram-per-project
+claude --channels plugin:telegram@claude-plugins-official --plugin-dir /path/to/telegram-per-project
 ```
 
 **4. Pair.**
@@ -112,7 +112,7 @@ telegram-per-project/
 ├── server.ts                # Telegram bot + MCP server (bun)
 ├── package.json             # Dependencies: grammy, @modelcontextprotocol/sdk
 ├── claude-gram              # Session launcher & watchdog script
-├── install.sh               # Installer (bun + claude-gram symlink)
+├── install.sh               # Installer (bun + claude-gram copy)
 └── uninstall.sh             # Cleanup script
 ```
 
@@ -138,10 +138,11 @@ The server reads the bot token from the first available source:
 Usage: claude-gram [options] [project-dir]
 
 Options:
-  -dsp          Add --dangerously-skip-permissions to the claude command
-  --retries N   Max consecutive restart attempts (default: 3, 0 = no restart)
-  --cooldown S  Seconds between restarts (default: 10)
-  -h, --help    Show usage
+  -dsp              Add --dangerously-skip-permissions to the claude command
+  --plugin-dir DIR  Load a local plugin directory (skills/hooks override)
+  --retries N       Max consecutive restart attempts (default: 3, 0 = no restart)
+  --cooldown S      Seconds between restarts (default: 10)
+  -h, --help        Show usage
 
 Arguments:
   project-dir   Directory to run in (default: current directory)
@@ -151,7 +152,7 @@ Arguments:
 
 1. **Resolves project context** — reads `TELEGRAM_STATE_DIR` / `TELEGRAM_PROJECT_ID` from `.claude/settings.local.json` to find the bot token and access config
 2. **Interactive setup** — if no Telegram config exists for the project, guides you through setup (project ID, bot token validation, config file creation)
-3. **Launches Claude Code** with `--channels plugin:telegram-per-project`
+3. **Launches Claude Code** with `--channels plugin:telegram@claude-plugins-official`
 4. **Notifies on exit** — sends a Telegram message to all `allowFrom` users when the session ends
 5. **Retries with backoff** — waits `--cooldown` seconds and relaunches (up to `--retries` times)
 6. **Stability heuristic** — if a session ran for >5 minutes, the retry counter resets (distinguishes auth expiry from crash loops)
@@ -255,7 +256,7 @@ This does four things:
 cd ~/projects/myproject && claude-gram
 
 # Or manually with --plugin-dir:
-cd ~/projects/myproject && claude --plugin-dir /path/to/telegram-per-project --channels plugin:telegram-per-project
+cd ~/projects/myproject && claude --channels plugin:telegram@claude-plugins-official --plugin-dir /path/to/telegram-per-project
 ```
 
 **4. Pair** by DMing the project's bot. If your user ID was already in the global allowlist, it carries over automatically and you can skip pairing. Otherwise, the bot replies with a pairing code — approve with `/telegram-per-project:access pair <code>` as usual.

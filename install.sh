@@ -6,7 +6,7 @@ set -euo pipefail
 # The plugin itself is loaded by Claude Code via --plugin-dir (development)
 # or marketplace install. This script only handles:
 #   1. Ensuring bun is installed (plugin runtime)
-#   2. Symlinking claude-gram onto PATH
+#   2. Copying claude-gram onto PATH
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 CLAUDE_BOT="$SCRIPT_DIR/claude-gram"
@@ -31,17 +31,18 @@ if [[ -n "${1:-}" ]]; then
   mkdir -p "$INSTALL_DIR"
 fi
 
-LINK="$INSTALL_DIR/claude-gram"
+TARGET="$INSTALL_DIR/claude-gram"
 
 # ── Install claude-gram ───────────────────────────────────────────────────────
 
-if [[ -e "$LINK" ]] || [[ -L "$LINK" ]]; then
-  printf 'Updating existing install at %s\n' "$LINK"
-  rm -f "$LINK"
+if [[ -e "$TARGET" ]] || [[ -L "$TARGET" ]]; then
+  printf 'Updating existing install at %s\n' "$TARGET"
+  rm -f "$TARGET"
 fi
 
-ln -s "$CLAUDE_BOT" "$LINK"
-printf 'Installed: %s -> %s\n' "$LINK" "$CLAUDE_BOT"
+cp "$CLAUDE_BOT" "$TARGET"
+chmod +x "$TARGET"
+printf 'Installed: %s\n' "$TARGET"
 
 # ── Ensure bun is installed ──────────────────────────────────────────────────
 

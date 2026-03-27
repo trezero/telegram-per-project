@@ -14,6 +14,7 @@ MAX_RETRIES=3
 COOLDOWN=10
 PROJECT_DIR="."
 STABILITY_THRESHOLD=300  # 5 minutes in seconds
+PLUGIN_DIR=""            # --plugin-dir path for local plugin overrides
 
 usage() {
   cat <<'EOF'
@@ -23,10 +24,11 @@ Launches Claude Code with the Telegram channel plugin, monitors the process,
 sends Telegram notifications on session death, and retries with backoff.
 
 Options:
-  -dsp          Add --dangerously-skip-permissions to the claude command
-  --retries N   Max consecutive restart attempts (default: 3, 0 = no restart)
-  --cooldown S  Seconds between restarts (default: 10)
-  -h, --help    Show usage
+  -dsp              Add --dangerously-skip-permissions to the claude command
+  --plugin-dir DIR  Load a local plugin directory (skills/hooks override)
+  --retries N       Max consecutive restart attempts (default: 3, 0 = no restart)
+  --cooldown S      Seconds between restarts (default: 10)
+  -h, --help        Show usage
 
 Arguments:
   project-dir   Directory to run in (default: current directory)
@@ -34,6 +36,7 @@ Arguments:
 Examples:
   claude-gram
   claude-gram -dsp
+  claude-gram --plugin-dir ~/projects/telegram-per-project
   claude-gram --retries 0 ~/projects/archon
   tmux new -s archon "claude-gram -dsp ~/projects/archon"
 EOF
@@ -227,6 +230,7 @@ EOJSON
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -dsp)          DSP="--dangerously-skip-permissions"; shift ;;
+    --plugin-dir)  [[ -n "${2:-}" ]] || die "--plugin-dir requires a path"; PLUGIN_DIR="$2"; shift 2 ;;
     --retries)     [[ -n "${2:-}" ]] || die "--retries requires a number"; MAX_RETRIES="$2"; shift 2 ;;
     --cooldown)    [[ -n "${2:-}" ]] || die "--cooldown requires a number"; COOLDOWN="$2"; shift 2 ;;
     -h|--help)     usage; exit 0 ;;
@@ -404,6 +408,7 @@ trap 'forward_signal TERM' TERM
 build_display_cmd() {
   local cmd="claude-gram"
   [[ -n "$DSP" ]] && cmd="$cmd -dsp"
+  [[ -n "$PLUGIN_DIR" ]] && cmd="$cmd --plugin-dir $PLUGIN_DIR"
   cmd="$cmd $PROJECT_DIR"
   printf '%s' "$cmd"
 }
@@ -418,7 +423,8 @@ attempt=0
 while true; do
   attempt=$((attempt + 1))
 
-  CLAUDE_CMD=(claude)
+  CLAUDE_CMD=(claude --channels plugin:telegram@claude-plugins-official)
+  [[ -n "$PLUGIN_DIR" ]] && CLAUDE_CMD+=(--plugin-dir "$PLUGIN_DIR")
   [[ -n "$DSP" ]] && CLAUDE_CMD+=("$DSP")
 
   if [[ $attempt -eq 1 ]]; then

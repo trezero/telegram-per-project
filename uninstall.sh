@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# uninstall.sh — Remove claude-gram and the Telegram plugin from this machine.
+# uninstall.sh — Remove claude-gram and optionally purge Telegram state.
 #
 # Usage:
-#   ./uninstall.sh                 Remove claude-gram + plugin, keep state dirs
+#   ./uninstall.sh                 Remove claude-gram symlink and bun symlink
 #   ./uninstall.sh --purge         Also delete all Telegram state (tokens, access, inboxes)
-#   ./uninstall.sh --project <id>  Also clean TELEGRAM env from that project's settings
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+#   ./uninstall.sh --project <dir> Also clean TELEGRAM env from that project's settings
 
 PURGE=false
 PROJECT_DIR=""
@@ -36,11 +34,10 @@ done
 # ── Remove claude-gram symlink ────────────────────────────────────────────────
 
 for dir in "$HOME/.local/bin" "$HOME/bin"; do
-  link="$dir/claude-gram"
-  if [[ -L "$link" ]]; then
-    target="$(readlink "$link")"
-    rm -f "$link"
-    printf 'Removed: %s (was -> %s)\n' "$link" "$target"
+  target="$dir/claude-gram"
+  if [[ -e "$target" ]] || [[ -L "$target" ]]; then
+    rm -f "$target"
+    printf 'Removed: %s\n' "$target"
   fi
 done
 
@@ -50,26 +47,15 @@ for dir in "$HOME/.local/bin" "$HOME/bin"; do
   link="$dir/bun"
   if [[ -L "$link" ]]; then
     target="$(readlink -f "$link" 2>/dev/null || readlink "$link")"
-    # Only remove if it points into ~/.bun (our symlink) or to itself (broken loop)
     if [[ "$target" == "$HOME/.bun"* ]] || [[ "$target" == "$link" ]]; then
       rm -f "$link"
       printf 'Removed bun symlink: %s\n' "$link"
-    else
-      printf 'Skipped bun symlink (points to %s — not ours)\n' "$target"
     fi
   fi
 done
 
-# ── Remove node_modules in this repo ─────────────────────────────────────────
+# ── Disable the plugin in Claude Code ─────────────────────────────────────────
 
-if [[ -d "$SCRIPT_DIR/node_modules" ]]; then
-  rm -rf "$SCRIPT_DIR/node_modules"
-  printf 'Removed: %s/node_modules\n' "$SCRIPT_DIR"
-fi
-
-# ── Uninstall the Claude plugin ───────────────────────────────────────────────
-
-# Find the claude binary — it may not be on $PATH in all shell contexts
 CLAUDE_BIN=""
 if command -v claude >/dev/null 2>&1; then
   CLAUDE_BIN="$(command -v claude)"
@@ -83,22 +69,10 @@ else
 fi
 
 if [[ -n "$CLAUDE_BIN" ]]; then
-  printf '\nUninstalling Telegram plugin...\n'
-  if "$CLAUDE_BIN" plugin uninstall telegram@claude-plugins-official 2>/dev/null; then
-    printf 'Plugin uninstalled.\n'
-  else
-    printf 'Plugin not installed or already removed.\n'
-  fi
-else
-  printf '\nclaude not found — skipping plugin uninstall.\n'
-  printf 'Run manually if needed:  claude plugin uninstall telegram@claude-plugins-official\n'
-fi
-
-# Remove plugin cache directory
-TELEGRAM_CACHE=$(ls -d "$HOME/.claude/plugins/cache/claude-plugins-official/telegram/"*/ 2>/dev/null | head -1)
-if [[ -n "$TELEGRAM_CACHE" ]]; then
-  rm -rf "$TELEGRAM_CACHE"
-  printf 'Removed plugin cache: %s\n' "$TELEGRAM_CACHE"
+  printf '\nDisabling Telegram plugin...\n'
+  "$CLAUDE_BIN" plugin disable telegram-per-project 2>/dev/null && \
+    printf 'Plugin disabled.\n' || \
+    printf 'Plugin not installed or already disabled.\n'
 fi
 
 # ── Clean project settings ────────────────────────────────────────────────────
@@ -128,8 +102,6 @@ if removed:
 else:
     print("  No Telegram env keys found.")
 PYEOF
-  else
-    printf 'No settings.local.json found at %s\n' "$settings"
   fi
 fi
 
@@ -141,12 +113,14 @@ if $PURGE; then
   if [[ -d "$STATE_ROOT" ]]; then
     rm -rf "$STATE_ROOT"
     printf 'Removed: %s\n' "$STATE_ROOT"
-  else
-    printf 'State dir not found (already clean): %s\n' "$STATE_ROOT"
+  fi
+  DATA_DIR="$HOME/.claude/plugins/data/telegram-per-project"
+  if [[ -d "$DATA_DIR" ]]; then
+    rm -rf "$DATA_DIR"
+    printf 'Removed: %s\n' "$DATA_DIR"
   fi
 else
-  printf '\nState dirs kept (tokens, access lists, inboxes preserved).\n'
-  printf 'Use --purge to also delete: ~/.claude/channels/telegram/\n'
+  printf '\nState dirs kept. Use --purge to also delete them.\n'
 fi
 
 printf '\nDone.\n'

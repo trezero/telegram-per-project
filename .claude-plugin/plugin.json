@@ -1,7 +1,7 @@
 {
   "name": "telegram-per-project",
-  "description": "Telegram channel for Claude Code with per-project bot isolation — each project gets its own bot, access policy, and message inbox. Includes response timeout for unresponsive sessions.",
-  "version": "1.0.0",
+  "description": "Telegram channel for Claude Code with per-project bot isolation — each project gets its own bot, access policy, and message inbox.",
+  "version": "1.1.0",
   "author": {
     "name": "trezero"
   },
@@ -14,5 +14,26 @@
     "mcp",
     "per-project",
     "multi-bot"
-  ]
+  ],
+  "channels": [
+    {
+      "server": "telegram",
+      "userConfig": {
+        "bot_token": {
+          "description": "Telegram bot token from @BotFather (e.g. 123456789:AAH...)",
+          "sensitive": true
+        }
+      }
+    }
+  ],
+  "mcpServers": {
+    "telegram": {
+      "command": "bun",
+      "args": ["server.ts"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}",
+      "env": {
+        "NODE_PATH": "${CLAUDE_PLUGIN_DATA}/node_modules"
+      }
+    }
+  }
 }

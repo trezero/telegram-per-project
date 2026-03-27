@@ -53,10 +53,11 @@ const ACCESS_FILE = join(STATE_DIR, 'access.json')
 const APPROVED_DIR = join(STATE_DIR, 'approved')
 const ENV_FILE = join(STATE_DIR, '.env')
 
-// Load ~/.claude/channels/telegram/.env into process.env. Real env wins.
-// Plugin-spawned servers don't get an env block — this is where the token lives.
+// Token resolution priority:
+// 1. CLAUDE_PLUGIN_OPTION_bot_token — set by plugin userConfig (keychain-backed)
+// 2. TELEGRAM_BOT_TOKEN — set via settings.local.json env block or shell env
+// 3. .env file in STATE_DIR — legacy fallback for existing installations
 try {
-  // Token is a credential — lock to owner. No-op on Windows (would need ACLs).
   chmodSync(ENV_FILE, 0o600)
   for (const line of readFileSync(ENV_FILE, 'utf8').split('\n')) {
     const m = line.match(/^(\w+)=(.*)$/)
@@ -64,14 +65,16 @@ try {
   }
 } catch {}
 
-const TOKEN = process.env.TELEGRAM_BOT_TOKEN
+const TOKEN = process.env.CLAUDE_PLUGIN_OPTION_bot_token
+  ?? process.env.TELEGRAM_BOT_TOKEN
 const STATIC = process.env.TELEGRAM_ACCESS_MODE === 'static'
 
 if (!TOKEN) {
   process.stderr.write(
-    `telegram channel: TELEGRAM_BOT_TOKEN required\n` +
-    `  set in ${ENV_FILE}\n` +
-    `  format: TELEGRAM_BOT_TOKEN=123456789:AAH...\n`,
+    `telegram channel: bot token required\n` +
+    `  Preferred: enable the plugin and provide the token when prompted\n` +
+    `  Alternative: set TELEGRAM_BOT_TOKEN in settings.local.json env block\n` +
+    `  Legacy: write TELEGRAM_BOT_TOKEN=... to ${ENV_FILE}\n`,
   )
   process.exit(1)
 }

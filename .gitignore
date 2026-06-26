@@ -1,1 +1,10 @@
 /node_modules
+
+# Claude Code local state — never commit
+/.claude/
+
+# Superpowers SDD scratch (briefs/reports/ledger — not source)
+/.superpowers/
+
+# Mini App build output — built on host at deploy time, not committed
+/webapp/dist/

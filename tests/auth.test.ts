@@ -1,6 +1,6 @@
 // tests/auth.test.ts
 import { test, expect } from 'bun:test'
-import { createHmac } from 'crypto'
+import { createHmac } from 'node:crypto'
 import { validateInitData } from '../lib/auth.ts'
 
 const TOKEN = '1234:test'

@@ -176,37 +176,36 @@ EOJSON
     fi
   fi
 
-  # 5. Update settings.local.json
+  # 5. Update settings.local.json — merge env keys with a real JSON parser.
+  #    Hand-editing JSON with sed is fragile: an empty one-line env block
+  #    ("env": {}) makes sed append keys OUTSIDE the block, producing invalid
+  #    JSON that Claude Code silently rejects (env ends up missing). bun is
+  #    already a hard dependency of this system (the channel server needs it),
+  #    so parse/merge/write with bun instead.
   local settings_file="$proj_dir/.claude/settings.local.json"
   mkdir -p "$proj_dir/.claude"
-  if [[ -f "$settings_file" ]]; then
-    # File exists — inject/update env keys. Handles both "env" present and absent.
-    local tmp_settings
-    tmp_settings=$(mktemp)
-    if grep -q '"env"' "$settings_file"; then
-      # env block exists — add/replace our keys after the "env": { line
-      sed '/"env"[[:space:]]*:[[:space:]]*{/,/}/{
-        /"TELEGRAM_PROJECT_ID"/d
-        /"TELEGRAM_STATE_DIR"/d
-        /"env"[[:space:]]*:[[:space:]]*{/a\
-    "TELEGRAM_PROJECT_ID": "'"$proj_id"'",\
-    "TELEGRAM_STATE_DIR": "'"$state_dir"'",
-      }' "$settings_file" > "$tmp_settings"
-    else
-      # No env block — add one after the opening brace (line 1).
-      # Note: do NOT use a sed range like 1,/{/ here — GNU sed extends that
-      # range to the SECOND line matching {, which would be "hooks": { etc.,
-      # causing env to be injected inside hooks. Use the line-1 address only.
-      sed '1a\
-  "env": {\
-    "TELEGRAM_PROJECT_ID": "'"$proj_id"'",\
-    "TELEGRAM_STATE_DIR": "'"$state_dir"'"\
-  },' "$settings_file" > "$tmp_settings"
-    fi
-    mv "$tmp_settings" "$settings_file"
+
+  if command -v bun >/dev/null 2>&1; then
+    bun -e '
+      const fs = require("fs");
+      const file = process.argv[1];
+      let obj = {};
+      if (fs.existsSync(file)) {
+        try { obj = JSON.parse(fs.readFileSync(file, "utf8")); }
+        catch (e) { obj = {}; } // corrupt/empty — start fresh
+      }
+      const env = (obj.env && typeof obj.env === "object" && !Array.isArray(obj.env)) ? obj.env : {};
+      env.TELEGRAM_PROJECT_ID = process.argv[2];
+      env.TELEGRAM_STATE_DIR = process.argv[3];
+      obj.env = env;
+      fs.writeFileSync(file, JSON.stringify(obj, null, 2) + "\n");
+    ' "$settings_file" "$proj_id" "$state_dir"
   else
-    # No settings file — create one
-    cat > "$settings_file" <<EOJSON
+    # No bun — only safe action is creating a fresh file. Merging into an
+    # existing one without a parser risks corruption, so refuse and tell the
+    # user to install bun (./install.sh) and re-run.
+    if [[ ! -f "$settings_file" ]]; then
+      cat > "$settings_file" <<EOJSON
 {
   "env": {
     "TELEGRAM_PROJECT_ID": "$proj_id",
@@ -214,6 +213,13 @@ EOJSON
   }
 }
 EOJSON
+    else
+      printf 'claude-gram: bun not found — cannot safely merge env into existing %s\n' "$settings_file" >&2
+      printf '  Run ./install.sh to install bun, then re-run claude-gram.\n' >&2
+      printf '  Or add these keys to the env object manually:\n' >&2
+      printf '    "TELEGRAM_PROJECT_ID": "%s"\n' "$proj_id" >&2
+      printf '    "TELEGRAM_STATE_DIR": "%s"\n' "$state_dir" >&2
+    fi
   fi
   printf '  Updated %s\n' "$settings_file"
 

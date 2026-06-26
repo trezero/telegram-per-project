@@ -28,10 +28,18 @@ we haven't published to our own marketplace yet. See `docs/claudePlugins.md` sec
 ## Build and run
 
 ```bash
-# Install (copies claude-gram to ~/.local/bin, installs bun)
+# Install (copies claude-gram to ~/.local/bin, installs bun, best-effort
+# installs the official channel plugin telegram@claude-plugins-official)
 ./install.sh
 
-# Run in a project directory
+# The channel plugin is REQUIRED — claude-gram launches with
+# --channels plugin:telegram@claude-plugins-official, which resolves to it.
+# Without it you get "plugin:telegram:telegram: failed". Verify:
+claude plugin list | grep telegram
+# If missing:
+claude plugin install telegram@claude-plugins-official
+
+# Run in a project directory (load this repo's per-project skills via --plugin-dir)
 cd ~/projects/some-project
 claude-gram -dsp --plugin-dir /path/to/telegram-per-project
 ```
@@ -52,6 +60,7 @@ claude-gram -dsp --plugin-dir /path/to/telegram-per-project
 
 ## Critical conventions
 
+- **Two plugins are required for the beta split-mode.** `claude-gram` always uses `--channels plugin:telegram@claude-plugins-official` (the official channel transport — must be installed via `claude plugin install telegram@claude-plugins-official`) AND `--plugin-dir` (this repo's per-project skills/hooks). If `plugin:telegram:telegram` fails to connect, the official channel plugin isn't installed. After publishing to our own marketplace (`docs/claudePlugins.md` roadmap), these collapse into one.
 - **`--channels` requires `@marketplace` suffix.** Never use bare `plugin:<name>`. See Issue 7 in docs.
 - **GNU sed `1,/{/` is broken for JSON injection.** Always use `sed '1a\...'`. See Issue 1 in docs.
 - **Two plugin directories exist for marketplace plugins.** `external_plugins/` is what Claude loads at runtime, not the versioned cache. See Issue 5 in docs.

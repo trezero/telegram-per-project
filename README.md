@@ -4,12 +4,24 @@ Connect a Telegram bot to Claude Code via an MCP channel plugin. Per-project mod
 
 ## Prerequisites
 
-- [Bun](https://bun.sh) — the MCP server runs on Bun. The installer will set it up if missing.
+- [Claude Code](https://claude.ai/code) installed and signed in (`claude` on your PATH).
+- [Bun](https://bun.sh) — the channel server runs on Bun. `install.sh` sets it up if missing.
 - `curl` — used by `claude-gram` for Telegram API calls (pre-installed on most systems).
 
-## Installation
+## Read this first: there are two plugins
 
-Clone the repo and run the installer:
+This setup uses **two separate plugins**, and you need both. Confusing them is the #1 reason installs fail:
+
+| Plugin | What it gives you | How you install it | Required? |
+|---|---|---|---|
+| **`telegram@claude-plugins-official`** (the official channel plugin) | The **channel itself** — the MCP server that polls Telegram and pipes messages into your session. | `claude plugin install telegram@claude-plugins-official` | **Yes — without it `claude-gram` cannot connect.** |
+| **`telegram-per-project`** (this repo) | Per-project **skills** (`/telegram-per-project:access`, `/telegram-per-project:configure`) and hooks. | `--plugin-dir` pointing at the cloned repo | Yes, for per-project bot isolation. |
+
+`claude-gram` always launches with `--channels plugin:telegram@claude-plugins-official`. That flag resolves to the *official* plugin — so that plugin **must be installed first**, or you'll see `MCP servers ... plugin:telegram:telegram: failed`. The `--plugin-dir` flag then layers this repo's per-project skills on top. See [Troubleshooting](#troubleshooting) if the channel won't connect.
+
+> When this repo is eventually published to its own marketplace (see [`docs/claudePlugins.md`](./docs/claudePlugins.md)), the two collapse into one and only a single install will be needed. Until then, both are required.
+
+## Installation
 
 ```bash
 git clone https://github.com/trezero/telegram-per-project.git
@@ -17,31 +29,29 @@ cd telegram-per-project
 ./install.sh
 ```
 
-This does two things:
-1. Copies `claude-gram` to `~/.local/bin` (or `~/bin`) so it's available globally
-2. Installs [Bun](https://bun.sh) if not already present (the plugin runtime)
+`install.sh` does three things:
 
-The installed copy is independent of the repo — re-run `./install.sh` to deploy updates.
+1. Copies `claude-gram` to `~/.local/bin` (or `~/bin`) so it's on your PATH.
+2. Installs [Bun](https://bun.sh) if it isn't already present (the channel server runtime).
+3. **Installs the official channel plugin** `telegram@claude-plugins-official` (best-effort) — the step that makes `claude-gram` work.
 
-You can specify a custom install directory: `./install.sh /usr/local/bin`
+You can pass a custom install directory: `./install.sh /usr/local/bin`.
 
-### Loading the plugin
-
-The plugin is loaded by Claude Code at session start. Choose one:
-
-```bash
-# Development — loads from the cloned repo (this session only)
-claude --plugin-dir /path/to/telegram-per-project
-
-# Marketplace — permanent install (when published)
-claude plugin install telegram-per-project@<marketplace>
-```
-
-When loaded via `--plugin-dir`, the local copy takes precedence over any installed marketplace version with the same name.
+The installed `claude-gram` copy is independent of the repo — re-run `./install.sh` to deploy updates.
 
 ## Quick Setup
 
-> Default pairing flow for a single-user DM bot. See [ACCESS.md](./ACCESS.md) for groups and multi-user setups.
+> Default flow for a single-user DM bot. See [ACCESS.md](./ACCESS.md) for groups and multi-user setups.
+
+**0. Make sure the official channel plugin is installed.**
+
+`install.sh` attempts this automatically, but verify it — this is the step that, if skipped, breaks everything:
+
+```bash
+claude plugin install telegram@claude-plugins-official
+```
+
+(Already-installed is fine; it's idempotent.) Confirm it shows up with `claude plugin list`.
 
 **1. Create a bot with BotFather.**
 
@@ -52,30 +62,24 @@ Open a chat with [@BotFather](https://t.me/BotFather) on Telegram and send `/new
 
 BotFather replies with a token that looks like `123456789:AAHfiqksKZ8...` — that's the whole token, copy it including the leading number and colon.
 
-**2. Load the plugin and provide the token.**
+**2. Launch with the per-project skills loaded.**
 
-When you enable the plugin, Claude Code prompts for the bot token (stored securely in the system keychain). Alternatively, configure manually:
-
-```
-/telegram-per-project:configure 123456789:AAHfiqksKZ8...
-```
-
-**3. Launch.**
+From your project directory, pass `--plugin-dir` so this repo's per-project skills are active (otherwise you get the official global-only skills):
 
 ```bash
 cd ~/projects/myproject
-claude-gram
+claude-gram --plugin-dir /path/to/telegram-per-project
 ```
 
-If no Telegram config exists for the project, `claude-gram` guides you through interactive setup (project ID, token validation, config file creation).
+`claude-gram` detects missing config and walks you through interactive setup: a project ID, bot-token validation against Telegram, and writing the config files. Add `-dsp` to also pass `--dangerously-skip-permissions`.
 
-Or launch manually without the watchdog:
+Launch manually without the watchdog (same flags):
 
 ```bash
 claude --channels plugin:telegram@claude-plugins-official --plugin-dir /path/to/telegram-per-project
 ```
 
-**4. Pair.**
+**3. Pair.**
 
 DM your bot on Telegram — it replies with a 6-character pairing code. In your Claude Code session:
 
@@ -87,13 +91,27 @@ Your next DM reaches the assistant.
 
 > Unlike Discord, there's no server invite step — Telegram bots accept DMs immediately. Pairing handles the user-ID lookup so you never touch numeric IDs.
 
-**5. Lock it down.**
+**4. Lock it down.**
 
 Pairing is for capturing IDs. Once you're in, switch to `allowlist` so strangers don't get pairing-code replies:
 
 ```
 /telegram-per-project:access policy allowlist
 ```
+
+## Troubleshooting
+
+**`MCP servers ... plugin:telegram:telegram: failed` / channel won't connect.**
+The official channel plugin isn't installed. Run `claude plugin install telegram@claude-plugins-official`, confirm with `claude plugin list`, then restart the session. This is required — `claude-gram` gets the channel from that plugin via `--channels`.
+
+**The channel connects but `claude-gram`'s setup wrote to a project dir you can't reach.**
+You launched without `--plugin-dir`, so the *official* skills (`/telegram:access`) are active instead of the per-project ones. Relaunch with `claude-gram --plugin-dir /path/to/telegram-per-project` and pair with `/telegram-per-project:access pair <code>`.
+
+**`claude-gram: no per-project Telegram config found` on every run.**
+Expected the first time in a new project — `claude-gram` will prompt you. If it keeps prompting, check that your project's `.claude/settings.local.json` has the `env.TELEGRAM_PROJECT_ID` / `env.TELEGRAM_STATE_DIR` keys the setup wrote.
+
+**`bun not found` inside the session but `bun` works in your shell.**
+Restart your shell so the bun PATH added by `install.sh` takes effect, or re-run `./install.sh`. The channel server (`server.ts`) is invoked as `bun server.ts`.
 
 ## Plugin Structure
 

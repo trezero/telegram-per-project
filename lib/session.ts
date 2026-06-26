@@ -57,6 +57,7 @@ export function verifySessionCookie(token: string, secret: string): SessionPaylo
   } catch {
     return null
   }
+  if (parsed === null || typeof parsed !== 'object') return null
   if (typeof parsed.userId !== 'number' || !Number.isFinite(parsed.userId)) return null
   if (typeof parsed.exp !== 'number' || !Number.isFinite(parsed.exp)) return null
 

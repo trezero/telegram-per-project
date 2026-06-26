@@ -44,3 +44,13 @@ test('a malformed cookie structure returns null (does not throw)', () => {
   // Not valid base64url payload.
   expect(verifySessionCookie('@@@.bbbb', SECRET)).toBeNull()
 })
+
+test('a cookie whose payload is JSON null returns null (does not throw)', () => {
+  // HMAC is valid, but the payload decodes to JSON `null` — a non-object.
+  // Without the object guard, `parsed.userId` would throw a TypeError.
+  const payload = Buffer.from('null').toString('base64url')
+  const secret = 'test-secret'
+  const sig = createHmac('sha256', secret).update(payload).digest('base64url')
+  const token = `${payload}.${sig}`
+  expect(verifySessionCookie(token, secret)).toBeNull()
+})
